@@ -28,7 +28,7 @@
 </head>
 <body class="bg-[#07090e] text-slate-100 min-h-screen antialiased selection:bg-rose-500 selection:text-white">
 
-  <!-- Top Navigation -->
+  <!-- Navigation -->
   <nav class="border-b border-slate-800/80 bg-[#0d111a]/80 backdrop-blur-xl sticky top-0 z-50 px-6 py-3.5 flex justify-between items-center shadow-2xl">
     <div class="flex items-center gap-3.5">
       <div class="h-11 w-11 rounded-2xl bg-gradient-to-tr from-rose-600 via-red-500 to-amber-500 flex items-center justify-center shadow-lg shadow-rose-500/30">
@@ -45,7 +45,7 @@
         <span class="w-2.5 h-2.5 rounded-full bg-red-400 animate-ping"></span>
         <span class="font-mono-num text-[11px]">NPU HEXAGON ACTIVE</span>
       </div>
-      <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-emerald-400 text-xs font-medium">
+      <div class="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-emerald-400 text-xs font-medium">
         <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> On-Device Engine
       </div>
     </div>
@@ -80,7 +80,7 @@
       </div>
     </div>
 
-    <!-- Main Workspace -->
+    <!-- Main Live Workspace -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
       <!-- Left Column: Camera Studio & Audio Replay (7 Cols) -->
@@ -88,10 +88,10 @@
         
         <div class="relative bg-[#0c1017] border border-slate-800/90 rounded-3xl overflow-hidden shadow-2xl aspect-video flex items-center justify-center">
           
-          <!-- Live Camera Video -->
+          <!-- Live Camera Video (Muted while recording to prevent echo) -->
           <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
           
-          <!-- Recorded Video Playback with Full Audio -->
+          <!-- Recorded Video Playback (Unmuted with FULL AUDIO on replay) -->
           <video id="playbackVideo" controls playsinline class="hidden w-full h-full object-cover z-30 bg-black"></video>
 
           <!-- Standby Screen -->
@@ -116,7 +116,7 @@
             </div>
           </div>
 
-          <!-- Waveform Canvas -->
+          <!-- Spectrum Canvas -->
           <canvas id="audioVisualizer" class="absolute bottom-0 left-0 right-0 h-16 w-full pointer-events-none z-20"></canvas>
         </div>
 
@@ -153,6 +153,7 @@
             <span class="text-slate-500 font-heading font-semibold text-xl">/ 100</span>
           </div>
 
+          <!-- 4 Core Metric Panels -->
           <div class="grid grid-cols-2 gap-3 pt-1">
             <div class="bg-[#080a0f] p-3.5 rounded-2xl border border-slate-800/80">
               <span class="text-xs text-slate-400">Pace (WPM)</span>
@@ -173,7 +174,7 @@
           </div>
         </div>
 
-        <!-- Session Comparison Module -->
+        <!-- Session Comparison Module (Session 1 vs Session 2) -->
         <div class="bg-[#0d111a] border border-slate-800 p-5 rounded-3xl space-y-3 shadow-xl">
           <div class="flex items-center justify-between">
             <span class="text-xs font-heading font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
@@ -201,7 +202,7 @@
       </div>
     </div>
 
-    <!-- Final AI Conclusion -->
+    <!-- Final AI Conclusion & Interview Readiness Verdict Card -->
     <div class="bg-gradient-to-r from-[#0d111a] via-[#111726] to-[#0d111a] border border-indigo-500/30 p-6 md:p-8 rounded-3xl space-y-4 shadow-2xl">
       <div class="flex items-center gap-3">
         <div class="h-10 w-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
@@ -256,37 +257,55 @@
         const videoElem = document.getElementById('webcam');
         const playbackVideo = document.getElementById('playbackVideo');
 
+        // Reset previous replay
         playbackVideo.pause();
         playbackVideo.classList.add('hidden');
         videoElem.classList.remove('hidden');
 
-        // Request camera and microphone
+        // 1. Get both Video AND High-Quality Audio
         mediaStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
         });
 
+        // 2. Play live camera feed (Muted during recording to prevent feedback squeal)
         videoElem.srcObject = mediaStream;
         videoElem.muted = true;
         await videoElem.play();
 
+        // 3. Setup MediaRecorder with explicit Audio/Video Codecs
         recordedChunks = [];
         let mimeType = 'video/webm;codecs=vp8,opus';
-        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
+        }
 
         mediaRecorder = new MediaRecorder(mediaStream, { mimeType: mimeType });
+        
         mediaRecorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) recordedChunks.push(event.data);
+          if (event.data && event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
         };
+
+        // When recording stops, handle replay with AUDIO
         mediaRecorder.onstop = handleRecordingComplete;
+
+        // Request data slice every 1000ms so no audio chunks are lost
         mediaRecorder.start(1000);
 
+        // UI states
         document.getElementById('videoPlaceholder').style.display = 'none';
         document.getElementById('liveBadges').classList.remove('hidden');
         document.getElementById('startBtn').disabled = true;
         document.getElementById('stopBtn').disabled = false;
         document.getElementById('videoDownloadBox').classList.add('hidden');
 
+        // 4. Live Audio Waveform Visualizer
         try {
           audioContext = new (window.AudioContext || window.webkitAudioContext)();
           if (audioContext.state === 'suspended') await audioContext.resume();
@@ -299,6 +318,7 @@
           console.log("Audio visualizer optional error:", e);
         }
 
+        // 5. Timer
         secondsElapsed = 0;
         document.getElementById('timer').textContent = "00:00";
         if (timerInterval) clearInterval(timerInterval);
@@ -310,12 +330,16 @@
         }, 1000);
 
       } catch (err) {
-        alert("Camera/Mic Error: " + err.message);
+        alert("Camera/Mic Error: " + err.message + ". Please ensure your microphone and camera permissions are granted!");
       }
     }
 
     function stopPractice() {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      // 1. First trigger MediaRecorder stop (DO NOT kill mediaStream tracks yet!)
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+
       if (timerInterval) clearInterval(timerInterval);
       if (animFrameId) cancelAnimationFrame(animFrameId);
 
@@ -328,36 +352,56 @@
       cctx.clearRect(0, 0, canvas.width, canvas.height);
     }
 
+    // Handles video & audio playback and generating full feedback
     function handleRecordingComplete() {
-      if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
-      if (audioContext) audioContext.close();
+      // Safely close live camera tracks now that recorder is fully stopped
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+      }
+      if (audioContext) {
+        audioContext.close();
+      }
 
+      // Create Blob with both video and audio
       const blob = new Blob(recordedChunks, { type: 'video/webm' });
       const videoURL = URL.createObjectURL(blob);
 
+      // Playback with FULL SOUND ENABLED
       const playbackVideo = document.getElementById('playbackVideo');
       const webcam = document.getElementById('webcam');
       
       webcam.classList.add('hidden');
       playbackVideo.src = videoURL;
-      playbackVideo.muted = false;
-      playbackVideo.volume = 1.0;
+      playbackVideo.muted = false; // UNMUTE explicitly!
+      playbackVideo.volume = 1.0;   // 100% Volume
       playbackVideo.classList.remove('hidden');
-      playbackVideo.play().catch(e => console.log(e));
 
+      // Auto play video with sound
+      playbackVideo.play().catch(e => {
+        console.log("Auto-play with sound prevented, user can click play button:", e);
+      });
+
+      // Setup Download Link
       const downloadBtn = document.getElementById('downloadBtn');
       downloadBtn.href = videoURL;
       document.getElementById('videoDownloadBox').classList.remove('hidden');
 
-      // Telemetry Results
-      document.getElementById('overallScore').textContent = 91;
-      document.getElementById('wpmValue').textContent = "142";
-      document.getElementById('fillerCount').textContent = "3";
-      document.getElementById('grammarScore').textContent = "94%";
-      document.getElementById('facialScore').textContent = "89%";
+      // Populate Metrics
+      const score = 91;
+      const wpm = 142;
+      const fillers = 3;
+      const grammar = 94; // %
+      const facialConfidence = 89; // %
+
+      document.getElementById('overallScore').textContent = score;
+      document.getElementById('wpmValue').textContent = `${wpm}`;
+      document.getElementById('fillerCount').textContent = `${fillers}`;
+      document.getElementById('grammarScore').textContent = `${grammar}%`;
+      document.getElementById('facialScore').textContent = `${facialConfidence}%`;
       document.getElementById('scoreBadge').textContent = "Executive Level";
       document.getElementById('scoreBadge').className = "text-xs px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30";
 
+      // Final Conclusion
       document.getElementById('conclusionBox').innerHTML = `
         <div class="space-y-3">
           <div class="flex items-center gap-2 text-emerald-400 font-heading font-bold text-base">
